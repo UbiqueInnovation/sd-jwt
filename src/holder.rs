@@ -197,8 +197,9 @@ impl Holder {
         // issuer jwt contains cnf claim then Key Binding JWT is required
         let issuer_claims_part = get_jwt_part(self.sd_jwt.as_str(), JWTPart::Claims)?;
         let issuer_jwt_claims = decode_claims_no_verification(issuer_claims_part.as_str())?;
+        let has_key_binding = self.external_signer.is_some() || (self.key.is_some() && self.algorithm.is_some() && self.aud.is_some());
         if issuer_jwt_claims.get("cnf").is_some()
-            && (self.external_signer.is_none() || (self.key.is_none() || self.algorithm.is_none() || self.aud.is_none()))
+            && !has_key_binding
         {
             return Err(Error::KeyBindingJWTRequired);
         }
