@@ -1,12 +1,9 @@
+use std::sync::Arc;
 use crate::utils::{remove_digests, restore_disclosures};
-use crate::{
-    base64_hash, decode, encode, sd_jwt_parts,
-    utils::{decode_claims_no_verification, generate_nonce, get_jwt_part, JWTPart},
-    Algorithm, DisclosurePath, Error, HashAlgorithm, Header, KeyForDecoding, KeyForEncoding,
-    Validation,
-};
+use crate::{base64_hash, decode, encode, sd_jwt_parts, utils::{decode_claims_no_verification, generate_nonce, get_jwt_part, JWTPart}, Algorithm, DisclosurePath, Error, HashAlgorithm, Header, KeyForDecoding, KeyForEncoding, Validation, encode_with_external_signer};
 use chrono::Utc;
 use serde_json::Value;
+use crate::algorithm::algorithm;
 
 /// # Holder Module
 ///
@@ -63,7 +60,13 @@ pub struct Holder {
     disclosure_paths: Vec<DisclosurePath>,
     aud: Option<String>,
     key: Option<KeyForEncoding>,
+    external_signer: Option<Arc<dyn ExternalSigner>>,
     algorithm: Option<Algorithm>,
+}
+
+pub trait ExternalSigner {
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, Error>;
+    fn alg(&self) -> String;
 }
 
 impl Holder {
@@ -104,6 +107,7 @@ impl Holder {
             disclosure_paths,
             aud: None,
             key: None,
+            external_signer: None,
             algorithm: None,
         })
     }
@@ -156,6 +160,18 @@ impl Holder {
 
         Ok(self)
     }
+    pub fn device_binding(&mut self,
+                          aud: &str,
+                          external_signer: Arc<dyn ExternalSigner>,
+                          algorithm: &str, ) -> Result<&mut Self, Error> {
+        self.aud = Some(aud.to_string());
+        self.external_signer = Some(external_signer);
+        let Ok(alg) = algorithm.parse::<Algorithm>() else {
+            return Err(Error::InvalidDisclosureKey("Algorithm not known".to_string()));
+        };
+        self.algorithm = Some(alg);
+        Ok(self)
+    }
 
     /// Build the final presentation, ready for sharing or transmission.
     ///
@@ -182,7 +198,7 @@ impl Holder {
         let issuer_claims_part = get_jwt_part(self.sd_jwt.as_str(), JWTPart::Claims)?;
         let issuer_jwt_claims = decode_claims_no_verification(issuer_claims_part.as_str())?;
         if issuer_jwt_claims.get("cnf").is_some()
-            && (self.key.is_none() || self.algorithm.is_none() || self.aud.is_none())
+            && (self.external_signer.is_none() || (self.key.is_none() || self.algorithm.is_none() || self.aud.is_none()))
         {
             return Err(Error::KeyBindingJWTRequired);
         }
@@ -221,15 +237,20 @@ impl Holder {
                 "iat": iat,
                 "sd_hash": sd_hash,
             });
-            let kb_jwt = encode(
-                &header,
-                &claims,
-                self.key
-                    .as_ref()
-                    .ok_or(Error::KeyBindingJWTParameterMissing(
-                        "encoding key".to_string(),
-                    ))?,
-            )?;
+            let kb_jwt = if let Some(external_signer) = self.external_signer.as_ref() {
+                encode_with_external_signer(&header,
+                                            &claims, external_signer)?
+            } else {
+                encode(
+                    &header,
+                    &claims,
+                    self.key
+                        .as_ref()
+                        .ok_or(Error::KeyBindingJWTParameterMissing(
+                            "encoding key".to_string(),
+                        ))?,
+                )?
+            };
             presentation.push_str(&kb_jwt);
         }
 
@@ -391,31 +412,31 @@ mod tests {
             "/given_name",
             &Some("given_name"),
             &serde_json::json!("John"),
-            &disclosure_paths[0]
+            &disclosure_paths[0],
         ));
         assert!(verify_path_to_disclosure(
             "/given_name",
             &Some("given_name"),
             &serde_json::json!("John"),
-            &disclosure_paths[0]
+            &disclosure_paths[0],
         ));
         assert!(verify_path_to_disclosure(
             "/family_name",
             &Some("family_name"),
             &serde_json::json!("Doe"),
-            &disclosure_paths[1]
+            &disclosure_paths[1],
         ));
         assert!(verify_path_to_disclosure(
             "/address/street_address",
             &Some("street_address"),
             &serde_json::json!("123 Main St"),
-            &disclosure_paths[2]
+            &disclosure_paths[2],
         ));
         assert!(verify_path_to_disclosure(
             "/address/locality",
             &Some("locality"),
             &serde_json::json!("Anytown"),
-            &disclosure_paths[3]
+            &disclosure_paths[3],
         ));
         Ok(())
     }
@@ -457,43 +478,43 @@ mod tests {
             "/given_name",
             &Some("given_name"),
             &serde_json::json!("John"),
-            &disclosure_paths[0]
+            &disclosure_paths[0],
         ));
         assert!(verify_path_to_disclosure(
             "/given_name",
             &Some("given_name"),
             &serde_json::json!("John"),
-            &disclosure_paths[0]
+            &disclosure_paths[0],
         ));
         assert!(verify_path_to_disclosure(
             "/family_name",
             &Some("family_name"),
             &serde_json::json!("Doe"),
-            &disclosure_paths[1]
+            &disclosure_paths[1],
         ));
         assert!(verify_path_to_disclosure(
             "/address/street_address",
             &Some("street_address"),
             &serde_json::json!("123 Main St"),
-            &disclosure_paths[2]
+            &disclosure_paths[2],
         ));
         assert!(verify_path_to_disclosure(
             "/address/locality",
             &Some("locality"),
             &serde_json::json!("Anytown"),
-            &disclosure_paths[3]
+            &disclosure_paths[3],
         ));
         assert!(verify_path_to_disclosure(
             "/nationalities/0",
             &None,
             &serde_json::json!("US"),
-            &disclosure_paths[4]
+            &disclosure_paths[4],
         ));
         assert!(verify_path_to_disclosure(
             "/nationalities/1",
             &None,
             &serde_json::json!("DE"),
-            &disclosure_paths[5]
+            &disclosure_paths[5],
         ));
         Ok(())
     }

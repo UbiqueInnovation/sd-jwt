@@ -15,6 +15,8 @@ pub enum Error {
     InvalidDisclosureKey(String),
     #[error("encoding key error")]
     EncodingKeyError(#[from] JwtError),
+    #[error("unknown algorithm")]
+    UnknownAlgorithm(String),
     #[error("invalid path pointer to disclosure")]
     InvalidPathPointer,
     #[error("invalid path pointer array index")]

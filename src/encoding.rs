@@ -1,10 +1,15 @@
-use crate::Algorithm;
+use std::sync::Arc;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use crate::{Algorithm, ExternalSigner};
 use crate::Error;
 use crate::Header;
 #[cfg(feature = "ring")]
 use jsonwebtoken::{
     encode as jwt_encode, Algorithm as JwtAlgorithm, EncodingKey, Header as JwtHeader,
 };
+use jsonwebtoken::crypto;
+use jsonwebtoken::errors::ErrorKind;
 
 #[cfg(feature = "noring")]
 use jsonwebtoken_rustcrypto::{
@@ -178,4 +183,31 @@ pub fn encode<T: Serialize>(
     key: &KeyForEncoding,
 ) -> Result<String, Error> {
     Ok(jwt_encode(&build_header(header)?, claims, &key.key)?)
+}
+
+pub fn encode_with_external_signer<T: Serialize>(header: &Header,
+                                                 claims: &T, external_signer: &Arc<dyn ExternalSigner>) -> Result<String, Error> {
+    let header = build_header(header)?;
+    let Ok(signer_alg) = external_signer.alg().parse::<jsonwebtoken::Algorithm>() else {
+        return Err(Error::InvalidDisclosureKey("Algorithm unknown".to_string()));
+    };
+    if signer_alg != header.alg {
+        return Err(Error::InvalidDisclosureKey("Algorithm does not match".to_string()));
+    }
+    let encoded_header = b64_encode_part(&header)?;
+    let encoded_claims = b64_encode_part(claims)?;
+    let message = [encoded_header, encoded_claims].join(".");
+    let signature = b64_encode(external_signer.sign(message.as_bytes())?);
+
+    Ok([message, signature].join("."))
+}
+
+pub(crate) fn b64_encode<T: AsRef<[u8]>>(input: T) -> String {
+    URL_SAFE_NO_PAD.encode(input)
+}
+
+/// Serializes a struct to JSON and encodes it in base64
+pub(crate) fn b64_encode_part<T: Serialize>(input: &T) -> jsonwebtoken::errors::Result<String> {
+    let json = serde_json::to_vec(input)?;
+    Ok(b64_encode(json))
 }

@@ -3,6 +3,7 @@ use base64::Engine;
 use rand::{thread_rng, Rng};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::convert::TryFrom;
+use sha3::{Sha3_256, Sha3_384, Sha3_512};
 
 pub(crate) fn generate_salt(len: usize) -> String {
     let mut salt = vec![0u8; len];
@@ -15,6 +16,9 @@ pub enum HashAlgorithm {
     SHA256,
     SHA384,
     SHA512,
+    SHA3_256,
+    SHA3_384,
+    SHA3_512
 }
 
 impl ToString for HashAlgorithm {
@@ -23,6 +27,9 @@ impl ToString for HashAlgorithm {
             HashAlgorithm::SHA256 => "sha-256".to_string(),
             HashAlgorithm::SHA384 => "sha-384".to_string(),
             HashAlgorithm::SHA512 => "sha-512".to_string(),
+            HashAlgorithm::SHA3_256 => "sha3-256".to_string(),
+            HashAlgorithm::SHA3_384 => "sha3-384".to_string(),
+            HashAlgorithm::SHA3_512 => "sha3-512".to_string()
         }
     }
 }
@@ -35,6 +42,7 @@ impl TryFrom<&str> for HashAlgorithm {
             "sha-256" => Ok(HashAlgorithm::SHA256),
             "sha-384" => Ok(HashAlgorithm::SHA384),
             "sha-512" => Ok(HashAlgorithm::SHA512),
+            "sha3-256" => Ok(HashAlgorithm::SHA3_256),
             _ => Err(Error::InvalidHashAlgorithm(s.to_string())),
         }
     }
@@ -44,6 +52,9 @@ enum Hasher {
     Sha256(Sha256),
     Sha384(Sha384),
     Sha512(Sha512),
+    Sha3_256(Sha3_256),
+    Sha3_384(Sha3_384),
+    Sha3_512(Sha3_512)
 }
 
 impl Hasher {
@@ -52,6 +63,9 @@ impl Hasher {
             HashAlgorithm::SHA256 => Hasher::Sha256(Sha256::new()),
             HashAlgorithm::SHA384 => Hasher::Sha384(Sha384::new()),
             HashAlgorithm::SHA512 => Hasher::Sha512(Sha512::new()),
+            HashAlgorithm::SHA3_256 => Hasher::Sha3_256(Sha3_256::new()),
+            HashAlgorithm::SHA3_384 => Hasher::Sha3_384(Sha3_384::new()),
+            HashAlgorithm::SHA3_512 => Hasher::Sha3_512(Sha3_512::new())
         }
     }
 
@@ -60,6 +74,10 @@ impl Hasher {
             Hasher::Sha256(hasher) => hasher.update(data),
             Hasher::Sha384(hasher) => hasher.update(data),
             Hasher::Sha512(hasher) => hasher.update(data),
+
+            Hasher::Sha3_256(hasher) => hasher.update(data),
+            Hasher::Sha3_384(hasher) => hasher.update(data),
+            Hasher::Sha3_512(hasher) => hasher.update(data)
         }
     }
 
@@ -68,6 +86,10 @@ impl Hasher {
             Hasher::Sha256(hasher) => hasher.finalize().to_vec(),
             Hasher::Sha384(hasher) => hasher.finalize().to_vec(),
             Hasher::Sha512(hasher) => hasher.finalize().to_vec(),
+
+            Hasher::Sha3_256(hasher) => hasher.finalize().to_vec(),
+            Hasher::Sha3_384(hasher) => hasher.finalize().to_vec(),
+            Hasher::Sha3_512(hasher) => hasher.finalize().to_vec(),
         }
     }
 }
