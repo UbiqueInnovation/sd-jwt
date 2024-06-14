@@ -62,6 +62,7 @@ pub struct Holder {
     key: Option<KeyForEncoding>,
     external_signer: Option<Arc<dyn ExternalSigner>>,
     algorithm: Option<Algorithm>,
+    nonce: Option<String>,
 }
 
 pub trait ExternalSigner {
@@ -81,7 +82,11 @@ impl Holder {
     ///     Ok(())
     /// }
     /// ```
-    pub fn presentation(sd_jwt: &str) -> Result<Self, Error> {
+    pub fn presentation(sd_jwt: &str) -> Result<Self, Error>
+    {
+        Self::presentation_with_nonce(sd_jwt, None)
+    }
+    pub fn presentation_with_nonce(sd_jwt: &str, nonce: Option<String>) -> Result<Self, Error> {
         let (issuer_sd_jwt, disclosures, kb_jwt) = sd_jwt_parts(sd_jwt);
         if kb_jwt.is_some() {
             return Err(Error::SDJWTRejected(
@@ -109,6 +114,7 @@ impl Holder {
             key: None,
             external_signer: None,
             algorithm: None,
+            nonce,
         })
     }
 
@@ -225,7 +231,7 @@ impl Holder {
             // build kb-jwt
             let sd_alg =
                 HashAlgorithm::try_from(issuer_jwt_claims["_sd_alg"].as_str().unwrap_or(""))?;
-            let nonce = generate_nonce(32);
+            let nonce = if let Some(nonce) = self.nonce.as_ref().cloned() { nonce } else { generate_nonce(32) };
             let iat = Utc::now().timestamp();
             let sd_hash = base64_hash(sd_alg, &presentation);
             let mut header = Header::new(self.algorithm.clone().ok_or(
