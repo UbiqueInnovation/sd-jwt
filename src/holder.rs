@@ -105,7 +105,7 @@ impl Holder {
             &mut disclosure_paths,
             algorithm,
         )?;
-
+        
         Ok(Holder {
             sd_jwt: issuer_sd_jwt,
             redacted: Vec::new(),
@@ -133,6 +133,19 @@ impl Holder {
     /// ```
     pub fn redact(&mut self, path: &str) -> Result<&mut Self, Error> {
         self.redacted.push(path.to_string());
+        Ok(self)
+    }
+    pub fn redact_all(&mut self) -> Result<&mut Self, Error> {
+        for p in &self.disclosure_paths {
+            self.redacted.push(p.path.clone());
+        }
+        Ok(self)
+    }
+    pub fn disclose(&mut self, path: &str) -> Result<&mut Self, Error> {
+        println!("--> {path}");
+        println!("---> {:?}", self.redacted);
+        self.redacted.retain(|element| element.as_str() != path);
+        println!("---> {:?}", self.redacted);
         Ok(self)
     }
 
@@ -209,7 +222,7 @@ impl Holder {
         {
             return Err(Error::KeyBindingJWTRequired);
         }
-
+        println!("disclosure paths: {:?}", self.disclosure_paths);
         let presentation_disclosures = self
             .disclosure_paths
             .iter()

@@ -1,4 +1,4 @@
-use crate::{Algorithm, Error, Validation};
+use crate::{Algorithm, Error, HashAlgorithm, Validation};
 #[cfg(feature = "noring")]
 use base64::Engine;
 #[cfg(feature = "ring")]
@@ -16,6 +16,7 @@ use rsa::PublicKeyParts;
 use rsa::{pkcs1::DecodeRsaPublicKey, RsaPublicKey};
 
 use serde_json::Value;
+use crate::utils::{decode_claims_no_verification, get_jwt_part, JWTPart, restore_disclosures};
 
 #[derive(Clone)]
 pub struct KeyForDecoding {
@@ -181,6 +182,16 @@ pub fn sd_jwt_parts(serialized_jwt: &str) -> (String, Vec<String>, Option<String
     };
 
     (issuer_jwt, disclosures, key_binding_jwt)
+}
+
+pub fn restored_sd_jwt(issuer_jwt: &str, disclosures: &[String]) -> Result<Value, Error> {
+    let mut disclosure_paths = vec![];
+    let issuer_jwt = get_jwt_part(issuer_jwt, JWTPart::Claims)?;
+    let mut issuer_jwt_claims = decode_claims_no_verification(&issuer_jwt)?;
+    let algorithm = issuer_jwt_claims["_sd_alg"].as_str().unwrap_or("");
+    let algorithm = HashAlgorithm::try_from(algorithm)?;
+    restore_disclosures(&mut issuer_jwt_claims, disclosures, &mut disclosure_paths, algorithm)?;
+    Ok(issuer_jwt_claims)
 }
 
 #[cfg(test)]
