@@ -184,6 +184,8 @@ pub fn sd_jwt_parts(serialized_jwt: &str) -> (String, Vec<String>, Option<String
     (issuer_jwt, disclosures, key_binding_jwt)
 }
 
+/// Expose the restored sd_jwt, with properties inlined. Useful for display purposes or VPs
+/// based on [Presentation Definitions](https://identity.foundation/presentation-exchange/spec/v2.0.0/#presentation-definition).
 pub fn restored_sd_jwt(issuer_jwt: &str, disclosures: &[String]) -> Result<Value, Error> {
     let mut disclosure_paths = vec![];
     let issuer_jwt = get_jwt_part(issuer_jwt, JWTPart::Claims)?;

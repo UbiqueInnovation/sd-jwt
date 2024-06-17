@@ -65,6 +65,7 @@ pub struct Holder {
     nonce: Option<String>,
 }
 
+/// Trait for external (c.f. HSM/TEE) signing procedure.
 pub trait ExternalSigner {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, Error>;
     fn alg(&self) -> String;
@@ -86,6 +87,9 @@ impl Holder {
     {
         Self::presentation_with_nonce(sd_jwt, None)
     }
+    /// Create a presentation from a SD-JWT bound to an externally provided `nonce`
+    ///
+    /// Useful for presentation protocols like [OID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html#section-5).
     pub fn presentation_with_nonce(sd_jwt: &str, nonce: Option<String>) -> Result<Self, Error> {
         let (issuer_sd_jwt, disclosures, kb_jwt) = sd_jwt_parts(sd_jwt);
         if kb_jwt.is_some() {
@@ -135,17 +139,30 @@ impl Holder {
         self.redacted.push(path.to_string());
         Ok(self)
     }
+    /// Redact all claims from the SD-JWT
+    ///
+    /// ```rust
+    /// use sdjwt::Holder;
+    /// use sdjwt::Error;
+    ///
+    /// fn main() -> Result<(), Error> {
+    ///     let sd_jwt = "eyJ0eXAiOiJzZC1qd3QiLCJhbGciOiJSUzI1NiJ9.eyJfc2QiOlsiVFhsUEt1RjM1cDQ3ZW9XTlpEcklxS0w0R0JFaDBFWXJEQnBjNmFCWjUyQSIsIkdYWlpyVUlsdnBtaDB4b0h4WURadzFOZ211WXJrd1VVS09rNG1XTHZKYUEiXSwiX3NkX2FsZyI6InNoYS0yNTYiLCJhZGRyZXNzIjp7Il9zZCI6WyJiUjVKM21ULXQ0a05pZ0V0dDJ5RVd1MU92b0hVMzBmSTZ1RVdJd2ozZWJBIiwiczhicTVKeUtJaFFwcVR1Vl9hcVNtd090UVN5UHV1TUlUU2xINXg1UWI5RSJdLCJjb3VudHJ5IjoiVVMiLCJyZWdpb24iOiJBbnlzdGF0ZSJ9LCJiaXJ0aGRhdGUiOiIxOTQwLTAxLTAxIiwiY25mIjp7ImFsZyI6IlJTMjU2IiwiZSI6IkFRQUIiLCJrdHkiOiJSU0EiLCJuIjoiNS1EZDU0WHNNQU5UWm9KMllCcHVpWmFfYXpyMzJIcEJ3MUZjanA1d1UwWFBqbW9NQTdKVllDSk4wU05maDZ0dFhyWHhhYWhFNXdmUzd4S1E0N1ZvWXhYTjlLa3kxMzdDSUx0Q0xPWUJDZkdULWFRRXJKS0FJWUVORWtzbVNpU3k0VnVWRk1yTzlMOV9KTzViZk02QjZ6X3pickJYX2MxU2s0UFRLTnBqRTcxcTJHenU4ak5GdTR0c0JaOFFSdmtJVldxNGdxVklQNTFQQmZEcmNfTm53dk1aallGN2pfc0Z5eGg2ZExTVV96QkRrZjJOVWo4VXQ0M25vcW9YMGJoaE96aGdyTlpadGpFMTlrZGFlZTJYbjBweG0td3QzRjBxUjZxd2F2TFRJT21LVHE0OFdXSGxvUk5QWXpGbEo4OHNOaVNLeW9Ta0hXMG9SVDlscUhGX3ZRIiwidXNlIjoic2lnIn0sImVtYWlsIjoiam9obmRvZUBleGFtcGxlLmNvbSIsIm5hdGlvbmFsaXRpZXMiOlt7Ii4uLiI6InhnU2FMYS1CNk03OWpwVWZtaE9Hb0pkSHdNS0RNR0s3eUVKdC0tX0xScDAifSx7Ii4uLiI6Im5vNWxNSkVJSmRWdHozS3lDMVRXVkk2T2tsQnZIMjFCOExOOVEzWkxWRmMifV0sInBob25lX251bWJlciI6IisxLTIwMi01NTUtMDEwMSIsInBob25lX251bWJlcl92ZXJpZmllZCI6dHJ1ZSwic3ViIjoidXNlcl80MiIsInVwZGF0ZWRfYXQiOjE1NzAwMDAwMDB9.K2h-DNDgnq6q61tSxm1Gv-Hfo46SD8rEcP7yLFxcAlQNKBY-l1-bpXCJcqVZ7jugs2lqng0Cf9e34tM1OPkU3R6Pi5kUMGSyJ2y2ifsaZhGLCgxzNKk5W2ZxdkehzZQ6nHy6iu4flbT92Szv0eBR0hmS3hYTCtHlE4xib9G2dKWTQigB4ylPMkoRzbiKjgkucGkxSLN5ZQRXdxkez19bk5Q9BwuNLQMKG0lanq4ZJWq1C4LPt_K0WhEntyTL6SxVxGfR5HaUSxeYPCCOWSz9AVyZ46DWZGRx48PbuXGgLDH1UJYIsMej2F89CU-3QkWUrFq9b-DCYCQMxbBBekeLog~WyJoV2xxekkxY3piQzhCMnF2Mm5vN3pBIiwiZ2l2ZW5fbmFtZSIsIkpvaG4iXQ~WyJ4NXdpQVg1Qks3MFNfYzhXX2Vybm5nIiwiZmFtaWx5X25hbWUiLCJEb2UiXQ~WyI4Q1BKSmNKV2tiOGVwT09yZkl5YUNRIiwic3RyZWV0X2FkZHJlc3MiLCIxMjMgTWFpbiBTdCJd~WyJDTGo2S0tjblA1M2taOG5kOWFueWxnIiwibG9jYWxpdHkiLCJBbnl0b3duIl0~WyI4UEVqT3FlY245cjhGY0llWThhRjh3IiwiVVMiXQ~WyJMR2hVZmV2Y0FkTGVUUEVzRnlCNi1BIiwiREUiXQ~";
+    ///     let presentation = Holder::presentation(sd_jwt)?
+    ///        .redact_all()?;
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn redact_all(&mut self) -> Result<&mut Self, Error> {
         for p in &self.disclosure_paths {
             self.redacted.push(p.path.clone());
         }
         Ok(self)
     }
+    /// Disclose (undo a redaction) a property
+    ///
+    /// Useful for `limit_disclosure` presentations specified in [Presentation Exchange (v2.0.0)](https://identity.foundation/presentation-exchange/spec/v2.0.0/#input-descriptor)
     pub fn disclose(&mut self, path: &str) -> Result<&mut Self, Error> {
-        println!("--> {path}");
-        println!("---> {:?}", self.redacted);
         self.redacted.retain(|element| element.as_str() != path);
-        println!("---> {:?}", self.redacted);
         Ok(self)
     }
 
@@ -179,6 +196,9 @@ impl Holder {
 
         Ok(self)
     }
+    /// Other than [Self::key_binding], [Self::device_binding] uses an external Trait ([ExternalSigner])
+    /// to delegate signing operations. Useful in cases where the signature private key needs to reside
+    /// within a secure-enclave or HSM.
     pub fn device_binding(&mut self,
                           aud: &str,
                           external_signer: Arc<dyn ExternalSigner>,

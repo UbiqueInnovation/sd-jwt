@@ -8,8 +8,6 @@ use crate::Header;
 use jsonwebtoken::{
     encode as jwt_encode, Algorithm as JwtAlgorithm, EncodingKey, Header as JwtHeader,
 };
-use jsonwebtoken::crypto;
-use jsonwebtoken::errors::ErrorKind;
 
 #[cfg(feature = "noring")]
 use jsonwebtoken_rustcrypto::{
@@ -185,6 +183,7 @@ pub fn encode<T: Serialize>(
     Ok(jwt_encode(&build_header(header)?, claims, &key.key)?)
 }
 
+/// Use an external signer like for example HSMs or TEEs.
 pub fn encode_with_external_signer<T: Serialize>(header: &Header,
                                                  claims: &T, external_signer: &Arc<dyn ExternalSigner>) -> Result<String, Error> {
     let header = build_header(header)?;
