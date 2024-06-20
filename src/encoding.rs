@@ -187,7 +187,7 @@ pub fn encode<T: Serialize>(
 pub fn encode_with_external_signer<T: Serialize>(header: &Header,
                                                  claims: &T, external_signer: &Arc<dyn ExternalSigner>) -> Result<String, Error> {
     let header = build_header(header)?;
-    let Ok(signer_alg) = external_signer.alg().parse::<jsonwebtoken::Algorithm>() else {
+    let Ok(signer_alg) = external_signer.alg().parse::<JwtAlgorithm>() else {
         return Err(Error::InvalidDisclosureKey("Algorithm unknown".to_string()));
     };
     if signer_alg != header.alg {
@@ -206,7 +206,7 @@ pub(crate) fn b64_encode<T: AsRef<[u8]>>(input: T) -> String {
 }
 
 /// Serializes a struct to JSON and encodes it in base64
-pub(crate) fn b64_encode_part<T: Serialize>(input: &T) -> jsonwebtoken::errors::Result<String> {
+pub(crate) fn b64_encode_part<T: Serialize>(input: &T) -> serde_json::Result<String> {
     let json = serde_json::to_vec(input)?;
     Ok(b64_encode(json))
 }

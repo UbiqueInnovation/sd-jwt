@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use crate::utils::{remove_digests, restore_disclosures};
-use crate::{base64_hash, decode, encode, sd_jwt_parts, utils::{decode_claims_no_verification, generate_nonce, get_jwt_part, JWTPart}, Algorithm, DisclosurePath, Error, HashAlgorithm, Header, KeyForDecoding, KeyForEncoding, Validation, encode_with_external_signer};
+use crate::{base64_hash, decode, encode, sd_jwt_parts, utils::{decode_claims_no_verification, generate_nonce, get_jwt_part, JWTPart}, Algorithm, DisclosurePath, Error, HashAlgorithm, Header, KeyForDecoding, KeyForEncoding, Validation};
+use crate::encode_with_external_signer;
 use chrono::Utc;
 use serde_json::Value;
 use crate::algorithm::algorithm;
