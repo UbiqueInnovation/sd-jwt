@@ -9,6 +9,8 @@ use jsonwebtoken_rustcrypto::errors::Error as JwtError;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Failed to sign with external signer")]
+    SigningFailed(String),
     #[error("failed to form disclosuer")]
     DisclosureFailed(#[from] SerdeError),
     #[error("invalid disclosure key {0}")]
