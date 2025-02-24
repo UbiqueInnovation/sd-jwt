@@ -4,7 +4,6 @@ use crate::{base64_hash, decode, encode, sd_jwt_parts, utils::{decode_claims_no_
 use crate::encode_with_external_signer;
 use chrono::Utc;
 use serde_json::Value;
-use crate::algorithm::algorithm;
 
 /// # Holder Module
 ///
@@ -64,6 +63,13 @@ pub struct Holder {
     external_signer: Option<Arc<dyn ExternalSigner>>,
     algorithm: Option<Algorithm>,
     nonce: Option<String>,
+    transaction_data: Option<(Vec<String>, SpecVersion)>
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum SpecVersion {
+    PotentialUc5, // Specification for LSP POTENTIAL Usecase 5 (QES) - final draft v2: Transaction data included verbatim in key-binding JWT
+    Oid4VpDraft23, // OpenID for Verifiable Presentations - draft 23: Transaction data is hashed in key-binding JWT
 }
 
 /// Trait for external (c.f. HSM/TEE) signing procedure.
@@ -120,6 +126,7 @@ impl Holder {
             external_signer: None,
             algorithm: None,
             nonce,
+            transaction_data: None,
         })
     }
 
@@ -213,6 +220,16 @@ impl Holder {
         Ok(self)
     }
 
+    /// Include transaction data in the key binding JWT.
+    pub fn with_transaction_data(
+        &mut self,
+        transaction_data: Vec<String>,
+        spec_version: SpecVersion,
+    ) -> Result<&mut Self, Error> {
+        self.transaction_data = Some((transaction_data, spec_version));
+        Ok(self)
+    }
+
     /// Build the final presentation, ready for sharing or transmission.
     ///
     /// ```rust
@@ -272,12 +289,16 @@ impl Holder {
                 Error::KeyBindingJWTParameterMissing("algorithm".to_string()),
             )?);
             header.typ = Some("kb+jwt".to_string());
-            let claims = serde_json::json!({
+            let mut claims = serde_json::json!({
                 "aud": self.aud.clone().ok_or(Error::KeyBindingJWTParameterMissing("aud".to_string()))?,
                 "nonce": nonce,
                 "iat": iat,
                 "sd_hash": sd_hash,
             });
+            if let Some((transaction_data, spec_version)) = &self.transaction_data {
+                Self::insert_transaction_data(&mut claims, &transaction_data, *spec_version);
+            }
+
             let kb_jwt = if let Some(external_signer) = self.external_signer.as_ref() {
                 encode_with_external_signer(&header,
                                             &claims, external_signer)?
@@ -296,6 +317,30 @@ impl Holder {
         }
 
         Ok(presentation)
+    }
+
+    fn insert_transaction_data(
+        claims: &mut serde_json::Value,
+        transaction_data: &[String],
+        spec_version: SpecVersion,
+    ) {
+        match spec_version {
+            SpecVersion::PotentialUc5 => {
+                claims["transaction_data"] = serde_json::json!(transaction_data);
+            }
+            SpecVersion::Oid4VpDraft23 => {
+                // Note: the Authorization Request can contain a list of hash algorithms.
+                // SHA256 must always be supported, so we can be lazy and implement nothing else.
+                let hashes = transaction_data
+                    .iter()
+                    .map(|t| base64_hash(HashAlgorithm::SHA256, t.as_str()))
+                    .collect::<Vec<_>>();
+                claims["transaction_data_hashes"] = serde_json::json!(hashes);
+                // Spec: REQUIRED when this parameter was present in the transaction_data request
+                // parameter --> lazy: include it always.
+                claims["transaction_data_hashes_alg"] = serde_json::json!("sha-256");
+            }
+        }
     }
 
     pub fn verify_raw(
@@ -700,6 +745,7 @@ mod tests {
             .redact("/family_name")?
             .redact("/address/street_address")?
             .redact("/nationalities/0")?
+            .with_transaction_data(vec!["somebase64urlencodedjsondocument".to_string()], SpecVersion::Oid4VpDraft23)?
             .key_binding(
                 "https://someone.example.com",
                 &KeyForEncoding::from_rsa_pem(holder_private_key_pem.as_bytes())?,
@@ -735,6 +781,8 @@ mod tests {
         assert!(kb_claims["nonce"].is_string());
         assert!(kb_claims["iat"].is_number());
         assert!(kb_claims["sd_hash"].is_string());
+        assert!(kb_claims["transaction_data_hashes"].is_array());
+        assert!(kb_claims["transaction_data_hashes_alg"].is_string());
         let mut issuer_jwt_with_disclosures = issuer_jwt.clone();
         disclosures.iter().for_each(|disclosure| {
             issuer_jwt_with_disclosures.push('~');
